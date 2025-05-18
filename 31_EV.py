@@ -1,158 +1,75 @@
-import random
 import matplotlib.pyplot as plt
+from Deck import Deck
+from Hand import Hand
 
-class Card:
-    def __init__(self, suit, rank):
-        self.suit = suit  # 'Hearts', 'Spades', etc., or 'Joker'
-        self.rank = rank  # '2' to 'Ace', or 'Joker'
-
-    def __repr__(self):
-        if self.suit == 'Joker':
-            return 'Joker'
-        return f"{self.rank} of {self.suit}"
+# Compute the expected average, lowest and highest hand value in a game of thirty one 
+def compute_expected_hand_value(opponent_count, sample_size=1_000_000):
     
-    def get_point_value(self):
-        if self.rank == 'Joker': return 0 # Joker's value will be calculated later
-        elif self.rank in ['Jack', 'Queen', 'King']: return 10
-        elif self.rank == 'Ace': return 11
-        else: return int(self.rank)
-
-class Deck:
-    def __init__(self):
-        suits = ['Hearts', 'Diamonds', 'Clubs', 'Spades']
-        ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10',
-                 'Jack', 'Queen', 'King', 'Ace']
-        self.cards = [Card(suit, rank) for suit in suits for rank in ranks]
-
-        # Add 2 Jokers
-        self.cards.append(Card('Joker', 'Joker'))
-        self.cards.append(Card('Joker', 'Joker'))
-
-    def shuffle(self):
-        random.shuffle(self.cards)
-
-    def deal(self, num_cards=1):
-        if num_cards > len(self.cards):
-            raise ValueError("Not enough cards to deal.")
-        dealt_cards = self.cards[:num_cards]
-        self.cards = self.cards[num_cards:]
-        return dealt_cards
-
-    def __len__(self):
-        return len(self.cards)
-
-class Hand:
-    def __init__(self, cards):
-        if len(cards) != 3:
-            raise ValueError("Hand must contain exactly 3 cards.")
-        self.cards = cards
-
-    def __repr__(self):
-        return f"Hand({self.cards})"
-    
-    # Check that all non joker cards have the same ranks
-    def all_ranks_equal(self):
-        ranks = [card.rank for card in self.cards if card.suit != 'Joker']
-        return len(ranks) == 0 or all(rank == ranks[0] for rank in ranks)
-
-    # Checks how many a 3 card hand would be worth in the game of 31
-    def get_hand_value(self):
-        Hearts_value = 0
-        Diamonds_value = 0
-        Clubs_value = 0
-        Spades_value = 0
-
-        thirty_and_a_half = 0
-
-        # Variables for calculating hand values including Jokers
-        hand_contains_ace = any(card.rank == 'Ace' for card in self.cards if card.suit != 'Joker')
-        num_jokers = sum(1 for card in self.cards if card.suit == 'Joker')
-
-        hand_value = 0
-        
-        # Calculate the hand value ignoring Jokers
-        for card in self.cards:
-            if card.suit == 'Hearts':
-                Hearts_value += card.get_point_value()
-            elif card.suit == 'Diamonds':
-                Diamonds_value += card.get_point_value()
-            elif card.suit == 'Clubs':
-                Clubs_value += card.get_point_value()
-            elif card.suit == 'Spades':
-                Spades_value += card.get_point_value()
-
-        # If all ranks are equal our hand is worth at least 30.5
-        if self.all_ranks_equal(): thirty_and_a_half = 30.5
-
-        # Add the Jokers wild values
-        Hearts_value += 10 * num_jokers + int(not(hand_contains_ace))
-        Diamonds_value += 10 * num_jokers + int(not(hand_contains_ace))
-        Clubs_value += 10 * num_jokers + int(not(hand_contains_ace))
-        Spades_value += 10 * num_jokers + int(not(hand_contains_ace))
-
-        hand_value = max(Hearts_value, Diamonds_value, Clubs_value, Spades_value, thirty_and_a_half)
-
-        return hand_value
-
-def compute_expected_hand_value(player_count, sample_size=1_000_000):
+    # Values across all samples
     expected_average_hand_value = 0
-    expected_minimum_hand_value = 0
-    expected_maximum_hand_value = 0
+    expected_lowest_hand_value = 0
+    expected_highest_hand_value = 0
 
     for _ in range(sample_size):
         deck = Deck()
         deck.shuffle()
 
+        # Values for a given sample
         average_hand_value = 0
-        minimum_hand_value = 32
-        maximum_hand_value = 0
+        lowest_hand_value = 32
+        highest_hand_value = 0
         
-        for _ in range(player_count):
-            hand = Hand(deck.deal(3))
+        for _ in range(opponent_count):
+            # Deal four cards and keep the best of three since each opponent gets one draw after the knock
+            hand = Hand(deck.deal(4))
+            hand.keep_best_three()
             hand_value = hand.get_hand_value()
+            # Keep track of the average, lowest and highest hand value for this sample
             average_hand_value += hand_value
-            minimum_hand_value = hand_value if hand_value < minimum_hand_value else minimum_hand_value
-            maximum_hand_value = hand_value if hand_value > maximum_hand_value else maximum_hand_value
+            lowest_hand_value = hand_value if hand_value < lowest_hand_value else lowest_hand_value
+            highest_hand_value = hand_value if hand_value > highest_hand_value else highest_hand_value
 
-        average_hand_value /= player_count
+        # Keep track of the average, lowest and highest hand value across all sample
+        average_hand_value /= opponent_count
         expected_average_hand_value += average_hand_value
-        expected_minimum_hand_value += minimum_hand_value
-        expected_maximum_hand_value += maximum_hand_value   
+        expected_lowest_hand_value += lowest_hand_value
+        expected_highest_hand_value += highest_hand_value  
 
+    # Compute the expected values by diving by samples size, the higher the sample size, the more accurate
     expected_average_hand_value /= sample_size
-    expected_minimum_hand_value /= sample_size
-    expected_maximum_hand_value /= sample_size
+    expected_lowest_hand_value /= sample_size
+    expected_highest_hand_value /= sample_size
     
-    return expected_average_hand_value, expected_minimum_hand_value, expected_maximum_hand_value
+    return expected_average_hand_value, expected_lowest_hand_value, expected_highest_hand_value
 
 if __name__ == "__main__":
-    player_range = list(range(8, 1, -1))  # From 8 to 2
+    opponent_range = list(range(7, 0, -1))  # From 7 to 1 opponents
     avg_values = []
-    min_values = []
-    max_values = []
+    lowest_values = []
+    highest_values = []
 
-    for players in player_range:
-        avg, min_val, max_val = compute_expected_hand_value(players)
-        avg_values.append(avg)
-        min_values.append(min_val)
-        max_values.append(max_val)
+    for opponents in opponent_range:
+        avg_val, lowest_val, highest_val = compute_expected_hand_value(opponents)
+        avg_values.append(avg_val)
+        lowest_values.append(lowest_val)
+        highest_values.append(highest_val)
 
-        print(f"Players: {players}")
-        print(f"  Average: {avg:.5f}")
-        print(f"  Minimum: {min_val:.5f}")
-        print(f"  Maximum: {max_val:.5f}")
+        print(f"Opponents: {opponents}")
+        print(f"  Average: {avg_val:.5f}")
+        print(f"  Minimum: {lowest_val:.5f}")
+        print(f"  Maximum: {highest_val:.5f}")
 
-    # Plotting
+    # Plotting our findings
     plt.figure(figsize=(10, 6))
-    plt.plot(player_range, avg_values, label="Average Hand Value", marker="o")
-    plt.plot(player_range, min_values, label="Minimum Hand Value", marker="s")
-    plt.plot(player_range, max_values, label="Maximum Hand Value", marker="^")
-    plt.xlabel("Number of Players")
+    plt.plot(opponent_range, avg_values, label="Average Hand Value", marker="o")
+    plt.plot(opponent_range, highest_values, label="Lowest Hand Value", marker="s")
+    plt.plot(opponent_range, highest_values, label="Highest Hand Value", marker="^")
+    plt.xlabel("Number of Opponents")
     plt.ylabel("Hand Value")
-    plt.title("Expected Opening Hand Values by Number of Players")
+    plt.title("Expected Opening Hand + 1 Draw, Values by Number of Opponents")
     plt.legend()
     plt.grid(True)
-    plt.xticks(player_range)
-    plt.gca().invert_xaxis()  #Show from 8 -> 2 left to right
+    plt.xticks(opponent_range)
+    plt.gca().invert_xaxis()  #Show from 7 -> 1 left to right
     plt.tight_layout()
     plt.show()
